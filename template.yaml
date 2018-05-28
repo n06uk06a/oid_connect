@@ -1,0 +1,109 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: 'AWS::Serverless-2016-10-31'
+Parameters:
+  KMSPrincipal:
+    Type: String
+  KMSAliasParameter:
+    Type: String
+  OAuthClientID:
+    Type: String
+  OAuthClientSecret:
+    Type: String
+  CFKeyID:
+    Type: String
+  CFKey:
+    Type: String
+  URLPattern:
+    Type: String
+    Default: "*"
+  JWSKey:
+    Type: String
+  HostedDomain:
+    Type: String
+Resources:
+  KMSKey:
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: Allow
+            Principal: 
+              AWS: !Ref KMSPrincipal
+            Action: "kms:*"
+            Resource: "*"
+          - Effect: Allow
+            Principal: 
+              AWS: !GetAtt "LambdaAPIRole.Arn"
+            Action: "kms:Decrypt"
+            Resource: "*"
+  KMSAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Ref KMSAliasParameter
+      TargetKeyId: !Ref KMSKey
+  LambdaAPIRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: "sts:AssumeRole"
+      ManagedPolicyArns: 
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  OIDConnect:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      Handler: oidc
+      Runtime: go1.x 
+      CodeUri: build/
+      Timeout: 30
+      Role: !GetAtt LambdaAPIRole.Arn
+      Events:
+        PostResource:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: "GET"
+      Environment:
+        Variables:
+          OAUTH_CLIENT_ID: !Ref OAuthClientID
+          OAUTH_CLIENT_SECRET: !Ref OAuthClientSecret
+          CF_KEY_ID: !Ref CFKeyID
+          CF_KEY: !Ref CFKey
+          URL_PATTERN: !Ref URLPattern
+          JWS_KEY: !Ref JWSKey
+          HOSTED_DOMAIN: !Ref HostedDomain
+  ApiGwAccountConfig: 
+    Type: "AWS::ApiGateway::Account"
+    Properties: 
+      CloudWatchRoleArn: !GetAtt "ApiGatewayLoggingRole.Arn"
+  ApiGatewayLoggingRole: 
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: "2012-10-17"
+        Statement: 
+          - Effect: Allow
+            Principal: 
+              Service: 
+                - "apigateway.amazonaws.com"
+            Action: "sts:AssumeRole"
+      Path: "/"
+      ManagedPolicyArns: 
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs"
+  OIDConnectLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${OIDConnect}
+      RetentionInDays: 30
+Globals:
+  Api:
+    MethodSettings:
+      - DataTraceEnabled: true
+        LoggingLevel: 'INFO'
+        ResourcePath: '/*'
+        HttpMethod: '*'

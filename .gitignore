@@ -1,0 +1,5 @@
+/build/
+/.vscode/*
+/package.yaml
+/vendor/*
+.DS_Store

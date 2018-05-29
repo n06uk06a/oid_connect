@@ -18,7 +18,7 @@ $ GOOS=linux go build -o build/oidc
 ```
 $ aws cloudformation package \
     --template-file template.yaml \
-    --s3-bucket lambda-testing.eatas.co.jp \
+    --s3-bucket ${BUCKET_NAME} \
     --output-template-file package.yaml
 ```
 
